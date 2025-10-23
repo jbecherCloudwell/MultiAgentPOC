@@ -1,0 +1,14 @@
+# Node.js/TypeScript/Express typical ignores
+node_modules/
+dist/
+.env
+.DS_Store
+*.log
+.vscode/
+coverage/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.idea/
+*.swp

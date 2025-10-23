@@ -1,0 +1,8 @@
+### MultiAgentPOC chat example
+POST http://localhost:3000/chat
+Content-Type: application/json
+
+{
+  "user": "Alice",
+  "message": "Hello agents!"
+}
