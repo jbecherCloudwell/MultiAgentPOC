@@ -1,4 +1,4 @@
-// import fetch from 'node-fetch'; // Replaced with dynamic import below
+// Using native Node.js fetch (Node 18+)
 import type { ChatCompletion } from 'openai/resources';
 
 export interface AgentMessage {
@@ -33,10 +33,15 @@ export class OllamaAgent {
 		this.messages.push({ role: 'assistant', content });
 	}
 
-	async getCompletion(): Promise<string> {
+	async getCompletion(dialog: { speaker: string; message: string }[]): Promise<string> {
+		// Build prompt from dialog history
+		const prompt = dialog.map(turn => `${turn.speaker}: ${turn.message}`).join('\n');
 		const body = {
 			model: this.model,
-			messages: this.messages,
+			messages: [
+				{ role: 'system', content: this.persona },
+				{ role: 'user', content: prompt }
+			],
 			temperature: 0.7,
 			max_tokens: 400,
 			top_p: 0.95,
@@ -44,15 +49,13 @@ export class OllamaAgent {
 			presence_penalty: 0,
 			stream: false
 		};
-		const fetch = (await import('node-fetch')).default;
 		const res = await fetch(`${this.endpoint}/chat/completions`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify(body)
 		});
 		if (!res.ok) throw new Error(`Ollama API error: ${res.status}`);
-		const data = await res.json() as ChatCompletion;
-		// OpenAI/ollama returns choices[0].message.content
+		const data = await res.json();
 		return data.choices?.[0]?.message?.content || '';
 	}
 

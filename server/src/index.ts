@@ -21,6 +21,8 @@ const agents: Record<string, OllamaAgent> = {
 	agent2: new OllamaAgent({ persona: 'You are Agent 2.' })
 };
 
+const dialog: { speaker: string; message: string }[] = [];
+
 // Log incoming chat requests
 app.use('/api/chat', (req, res, next) => {
 	logger.info('POST /api/chat', { body: req.body });
@@ -79,22 +81,30 @@ app.post('/api/agents/:agentId/reset', (req, res) => {
 
 // API endpoint for chat with a specific agent
 app.post('/api/chat', async (req, res) => {
+	console.log('Request body:', req.body);
 	try {
-		const { agentId, message, model, persona } = req.body;
-		if (!agentId || !agents[agentId]) {
-			return res.status(400).json({ error: 'Invalid or missing agentId.' });
-		}
+		const { message } = req.body;
 		if (!message || typeof message !== 'string') {
 			return res.status(400).json({ error: 'Message is required.' });
 		}
-		const agent = agents[agentId];
-		if (model) agent.setModel(model);
-		if (persona) agent.setPersona(persona);
-		agent.addUserMessage(message);
-		const response = await agent.getCompletion();
-		agent.addAssistantMessage(response);
-		res.json({ response });
+		// Add user message
+		dialog.push({ speaker: 'user', message });
+
+		// Agent 1 responds to full dialog
+		const agent1Response = await agents.agent1.getCompletion(dialog);
+		dialog.push({ speaker: 'agent1', message: agent1Response });
+
+		// Agent 2 responds to full dialog (including agent1's message)
+		const agent2Response = await agents.agent2.getCompletion(dialog);
+		dialog.push({ speaker: 'agent2', message: agent2Response });
+
+		res.json({
+			agent1: agent1Response,
+			agent2: agent2Response,
+			dialog: dialog.slice(-12) // last 12 turns for brevity
+		});
 	} catch (err) {
+		console.error('Error in /api/chat:', err);
 		res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
 	}
 });
@@ -104,22 +114,15 @@ app.get('/', (req, res) => {
 	res.redirect('/chat');
 });
 
-// Serve React build at /chat and static assets
-const reactBuildPath = path.join(__dirname, '../../client/build');
-app.use('/chat', express.static(reactBuildPath));
-app.get('/chat', (req, res) => {
-	res.sendFile(path.join(reactBuildPath, 'index.html'));
-});
 
-// POST /chat { user: string, message: string }
-app.post('/chat', async (req, res) => {
-	const { user, message } = req.body;
-	if (!user || !message) {
-		return res.status(400).json({ error: 'Missing user or message' });
-	}
-	const dialog = await manager.handleUserMessage(user, message);
-	res.json(dialog);
-});
+// Serve React build at /chat and static assets only in production
+if (process.env.NODE_ENV === 'production') {
+	const reactBuildPath = path.join(__dirname, '../../client/build');
+	app.use('/chat', express.static(reactBuildPath));
+	app.get('/chat', (req, res) => {
+		res.sendFile(path.join(reactBuildPath, 'index.html'));
+	});
+}
 
 app.listen(port, () => {
 	console.log(`Server running on port ${port}`);

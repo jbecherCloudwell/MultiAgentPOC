@@ -17,13 +17,12 @@ export class AgentManager {
 
 	async handleUserMessage(user: string, message: string): Promise<DialogTurn[]> {
 		this.dialog.push({ speaker: 'user', message });
-		// Agent 1 responds
+		// Agent 1 responds to full dialog
 		const agent1Response = await this.agent1.respond(message, this.dialog);
 		this.dialog.push({ speaker: 'agent1', message: agent1Response });
-		// Agent 2 responds, can see user and agent1
-		const agent2Response = await this.agent2.respond(agent1Response, this.dialog);
+		// Agent 2 responds to full dialog (including agent1's message)
+		const agent2Response = await this.agent2.respond(agent1Response ? agent1Response : message, this.dialog);
 		this.dialog.push({ speaker: 'agent2', message: agent2Response });
-		return this.dialog.slice(-6); // Return last 6 turns for brevity
+		return this.dialog.slice(-12); // Return last 12 turns for brevity
 	}
 }
-// ...existing code from original src/manager.ts...

@@ -8,14 +8,14 @@ const agents = [
 const MultiAgentChat: React.FC = () => {
   const [agentId, setAgentId] = useState('agent1');
   const [message, setMessage] = useState('');
-  const [dialog, setDialog] = useState<{ sender: string; text: string }[]>([]);
+  // Accept dialog as array of { speaker, message } from backend
+  const [dialog, setDialog] = useState<{ speaker: string; message: string }[]>([]);
   const [loading, setLoading] = useState(false);
 
   const sendMessage = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!message.trim()) return;
     setLoading(true);
-    setDialog((d: { sender: string; text: string }[]) => [...d, { sender: 'You', text: message }]);
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
@@ -23,9 +23,14 @@ const MultiAgentChat: React.FC = () => {
         body: JSON.stringify({ agentId, message })
       });
       const data = await res.json();
-      setDialog((d: { sender: string; text: string }[]) => [...d, { sender: agents.find(a => a.id === agentId)?.label || agentId, text: data.response }]);
+      // Expect backend to return { dialog: DialogTurn[] }
+      if (Array.isArray(data.dialog)) {
+        setDialog(data.dialog);
+      } else {
+        setDialog((d) => [...d, { speaker: 'System', message: 'Unexpected response from server.' }]);
+      }
     } catch (err) {
-      setDialog((d: { sender: string; text: string }[]) => [...d, { sender: 'System', text: 'Error sending message.' }]);
+      setDialog((d) => [...d, { speaker: 'System', message: 'Error sending message.' }]);
     }
     setMessage('');
     setLoading(false);
@@ -35,9 +40,13 @@ const MultiAgentChat: React.FC = () => {
     <div style={{ maxWidth: 500, margin: '40px auto', background: '#fff', borderRadius: 8, boxShadow: '0 2px 8px #0001', padding: 24 }}>
       <h2>MultiAgentPOC Chat</h2>
       <div style={{ minHeight: 120, marginBottom: 16, background: '#f9f9f9', borderRadius: 4, padding: 12, fontSize: '1rem' }}>
-        {dialog.map((turn: { sender: string; text: string }, i: number) => (
-          <div key={i} style={{ marginBottom: 8 }}><b>{turn.sender}:</b> {turn.text}</div>
-        ))}
+        {dialog.length === 0 ? (
+          <div style={{ color: '#888' }}>No messages yet.</div>
+        ) : (
+          dialog.map((turn, i) => (
+            <div key={i} style={{ marginBottom: 8 }}><b>{turn.speaker}:</b> {turn.message}</div>
+          ))
+        )}
       </div>
       <form onSubmit={sendMessage} style={{ display: 'flex', gap: 8 }}>
         <select value={agentId} onChange={e => setAgentId(e.target.value)} style={{ padding: 8, borderRadius: 4 }}>
