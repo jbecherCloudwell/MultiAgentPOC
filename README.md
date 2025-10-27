@@ -32,11 +32,31 @@ Proof-of-concept Node.js app (TypeScript + Express) for 3-way dialog:
 - `POST /chat` &rarr; Accepts `{ user, message }` JSON and returns updated dialog
 
 ## Project Structure
-- `src/index.ts`: Express entry point, serves UI, handles redirects and API
-- `src/manager.ts`: Orchestrates dialog between user and agents
-- `src/agent.ts`: Simple agent logic (replace with real AI as needed)
+## Project Structure
+ - `server/src/index.ts`: Express entry point, serves UI, handles redirects and API
+ - `server/src/manager.ts`: Orchestrates dialog between user and agents
+ - `server/src/agent.ts`: Simple agent logic (replace with real AI as needed)
+ - `client/src/MultiAgentChat.tsx`: React chat UI component for agent selection and messaging
 
-## Extending
-- Replace `Agent.respond` with real AI logic or API calls
-- Add more agents or dialog logic in `AgentManager`
-- You can update the `/` endpoint to show a custom message if desired (currently a redirect)
+
+1. Install dependencies in both `server/` and `client/`:
+   ```sh
+   cd server && npm install
+   cd ../client && npm install
+   ```
+2. Start the server (dev mode):
+   ```sh
+   cd server
+   npx nodemon src/index.ts
+   ```
+3. Start the React client (dev mode):
+   ```sh
+   cd ../client
+   npm start
+   ```
+4. Open [http://localhost:3000/](http://localhost:3000/) in your browser
+   - You will be redirected to `/chat` and see the interactive chat UI
+5. (API) Send POST requests to `/api/chat` with JSON body:
+   ```json
+   { "agentId": "agent1", "message": "Hello agents!" }
+   ```
