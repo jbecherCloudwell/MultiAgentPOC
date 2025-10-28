@@ -1,11 +1,8 @@
-// Multi-agent support
 import { OllamaAgent } from './ollamaAgent';
+import { DialogManager } from './dialogManager';
 import express from 'express';
 import path from 'path';
 import logger from './logger';
-import { AgentManager } from './manager';
-
-import { Request, Response, NextFunction } from 'express';
 
 
 const app = express();
@@ -13,15 +10,49 @@ const port = process.env.PORT || 4000;
 
 app.use(express.json());
 
-const manager = new AgentManager();
-
 // Store agents by ID (in-memory for now)
 const agents: Record<string, OllamaAgent> = {
 	agent1: new OllamaAgent({ persona: 'You are Agent 1.' }),
 	agent2: new OllamaAgent({ persona: 'You are Agent 2.' })
 };
 
-const dialog: { speaker: string; message: string }[] = [];
+const dialogManager = new DialogManager(['agent1', 'agent2']);
+let agentLoopActive = false;
+let lastSpeaker: string | null = null;
+
+// Multi-agent support
+// Streaming agent response via SSE
+app.get('/api/agent-stream/:agentId', async (req, res) => {
+	const { agentId } = req.params;
+	if (!agentId || !agents[agentId]) {
+		res.status(400).json({ error: 'Invalid agentId' });
+		return;
+	}
+	// Set SSE headers
+	res.setHeader('Content-Type', 'text/event-stream');
+	res.setHeader('Cache-Control', 'no-cache');
+	res.setHeader('Connection', 'keep-alive');
+	res.flushHeaders?.();
+
+	// Get dialog history (last 24 turns)
+	const dialogSlice = dialogManager.getDialog().slice(-24);
+	try {
+		const stream = await agents[agentId].getCompletionStream(dialogSlice);
+		const reader = stream.getReader();
+		let done = false;
+		while (!done) {
+			const { value, done: streamDone } = await reader.read();
+			if (streamDone) break;
+			// Send each token as SSE event
+			res.write(`data: ${JSON.stringify({ token: value })}\n\n`);
+		}
+		res.write('data: [DONE]\n\n');
+		res.end();
+	} catch (err) {
+		res.write(`data: ${JSON.stringify({ error: err instanceof Error ? err.message : String(err) })}\n\n`);
+		res.end();
+	}
+});
 
 // Log incoming chat requests
 app.use('/api/chat', (req, res, next) => {
@@ -85,29 +116,59 @@ app.post('/api/chat', async (req, res) => {
 	try {
 		const { message } = req.body;
 		if (!message || typeof message !== 'string') {
+			logger.error('Invalid message received', { body: req.body });
 			return res.status(400).json({ error: 'Message is required.' });
 		}
-		// Add user message
-		dialog.push({ speaker: 'user', message });
-
-		// Agent 1 responds to full dialog
-		const agent1Response = await agents.agent1.getCompletion(dialog);
-		dialog.push({ speaker: 'agent1', message: agent1Response });
-
-		// Agent 2 responds to full dialog (including agent1's message)
-		const agent2Response = await agents.agent2.getCompletion(dialog);
-		dialog.push({ speaker: 'agent2', message: agent2Response });
-
-		res.json({
-			agent1: agent1Response,
-			agent2: agent2Response,
-			dialog: dialog.slice(-12) // last 12 turns for brevity
-		});
+		logger.info('User message received', { message });
+	dialogManager.addTurn('user', message);
+	dialogManager.setLastSpeaker('user');
+		// Interrupt and restart agent loop from latest user message
+		agentLoopActive = true;
+		res.json({ dialog: dialogManager.getDialog().slice(-24) });
 	} catch (err) {
-		console.error('Error in /api/chat:', err);
+		logger.error('Error in /api/chat', { error: err });
 		res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
 	}
-});
+	
+	// Background agent dialog loop
+	let agentInterval = setInterval(async () => {
+		if (!agentLoopActive) return;
+		const dialog = dialogManager.getDialog();
+		if (dialog.length === 0) return;
+		const currentLastSpeaker = dialogManager.getLastSpeaker();
+		// // Only allow a response if the last speaker has changed since last response
+		// if (currentLastSpeaker !== 'user' && currentLastSpeaker === dialogManager.getLastSpeaker()) return;
+		// Only allow agents to respond if the last speaker is not an agent
+		if (currentLastSpeaker === 'user' || currentLastSpeaker === 'agent2') {
+			logger.info('Agent agent1 responding', { dialog: dialog.slice(-6) });
+			try {
+				dialogManager.setLastSpeaker('agent1');
+				const response1 = await agents.agent1.getCompletion(dialog);
+				logger.info('Agent agent1 response', { response: response1 });
+				dialogManager.addTurn('agent1', response1);
+			} catch (agentErr) {
+				dialogManager.setLastSpeaker('agent1');
+				logger.error('Error from agent1', { error: agentErr });
+				dialogManager.addTurn('agent1', `Error: ${agentErr instanceof Error ? agentErr.message : String(agentErr)}`);
+			}
+			return;
+		}
+		if (currentLastSpeaker === 'agent1') {
+			logger.info('Agent agent2 responding', { dialog: dialog.slice(-6) });
+			try {
+				dialogManager.setLastSpeaker('agent2');
+				const response2 = await agents.agent2.getCompletion(dialog);
+				logger.info('Agent agent2 response', { response: response2 });
+				dialogManager.addTurn('agent2', response2);
+			} catch (agentErr) {
+				dialogManager.setLastSpeaker('agent2');
+				logger.error('Error from agent2', { error: agentErr });
+				dialogManager.addTurn('agent2', `Error: ${agentErr instanceof Error ? agentErr.message : String(agentErr)}`);
+			}
+			return;
+		}
+	}, 1000);
+	});
 
 // Redirect root to /chat for user convenience
 app.get('/', (req, res) => {
@@ -126,4 +187,9 @@ if (process.env.NODE_ENV === 'production') {
 
 app.listen(port, () => {
 	console.log(`Server running on port ${port}`);
+});
+
+// Return current dialog for real-time UI polling
+app.get('/api/dialog', (req, res) => {
+	res.json({ dialog: dialogManager.getDialog().slice(-24) }); // Return last 24 turns for more context
 });
