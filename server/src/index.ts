@@ -19,6 +19,7 @@ const agents: Record<string, OllamaAgent> = {
 const dialogManager = new DialogManager(['agent1', 'agent2']);
 let agentLoopActive = false;
 let lastSpeaker: string | null = null;
+let agentResponseInProgress = false;
 
 // Multi-agent support
 // Streaming agent response via SSE
@@ -132,14 +133,14 @@ app.post('/api/chat', async (req, res) => {
 	
 	// Background agent dialog loop
 	let agentInterval = setInterval(async () => {
-		if (!agentLoopActive) return;
+		if (!agentLoopActive || agentResponseInProgress) return;
 		const dialog = dialogManager.getDialog();
 		if (dialog.length === 0) return;
 		const currentLastSpeaker = dialogManager.getLastSpeaker();
-		// Prevent consecutive responses by the same agent
 		const lastDialogTurn = dialog.length > 0 ? dialog[dialog.length - 1].speaker : null;
-		// Only allow agents to respond if the last speaker is not itself
+
 		if ((currentLastSpeaker === 'user' || currentLastSpeaker === 'agent2') && lastDialogTurn !== 'agent1') {
+			agentResponseInProgress = true;
 			logger.info('Agent agent1 responding', { dialog: dialog.slice(-6) });
 			try {
 				const response1 = await agents.agent1.getCompletion(dialog);
@@ -151,9 +152,11 @@ app.post('/api/chat', async (req, res) => {
 				dialogManager.addTurn('agent1', `Error: ${agentErr instanceof Error ? agentErr.message : String(agentErr)}`);
 				dialogManager.setLastSpeaker('agent1');
 			}
+			agentResponseInProgress = false;
 			return;
 		}
 		if (currentLastSpeaker === 'agent1' && lastDialogTurn !== 'agent2') {
+			agentResponseInProgress = true;
 			logger.info('Agent agent2 responding', { dialog: dialog.slice(-6) });
 			try {
 				const response2 = await agents.agent2.getCompletion(dialog);
@@ -165,6 +168,7 @@ app.post('/api/chat', async (req, res) => {
 				dialogManager.addTurn('agent2', `Error: ${agentErr instanceof Error ? agentErr.message : String(agentErr)}`);
 				dialogManager.setLastSpeaker('agent2');
 			}
+			agentResponseInProgress = false;
 			return;
 		}
 	}, 1000);
