@@ -13,6 +13,7 @@ const MultiAgentChat: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [streamingMessage, setStreamingMessage] = useState("");
   const streamingMessageRef = React.useRef("");
+  const [autoScroll, setAutoScroll] = useState(true);
 
   // Poll /api/dialog every 1 second for real-time updates
   React.useEffect(() => {
@@ -30,12 +31,25 @@ const MultiAgentChat: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // Auto-scroll to bottom when dialog or streamingMessage changes
+  // Track user scroll position to enable/disable auto-scroll
   React.useEffect(() => {
-    if (chatWindowRef.current) {
+    const ref = chatWindowRef.current;
+    if (!ref) return;
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = ref;
+      // If user is within 40px of the bottom, enable auto-scroll
+      setAutoScroll(scrollHeight - scrollTop - clientHeight < 40);
+    };
+    ref.addEventListener('scroll', handleScroll);
+    return () => ref.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  // Auto-scroll to bottom only if user is near the bottom
+  React.useEffect(() => {
+    if (autoScroll && chatWindowRef.current) {
       chatWindowRef.current.scrollTop = chatWindowRef.current.scrollHeight;
     }
-  }, [dialog, streamingMessage]);
+  }, [dialog, streamingMessage, autoScroll]);
 
   const sendMessage = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
