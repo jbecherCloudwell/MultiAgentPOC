@@ -136,34 +136,34 @@ app.post('/api/chat', async (req, res) => {
 		const dialog = dialogManager.getDialog();
 		if (dialog.length === 0) return;
 		const currentLastSpeaker = dialogManager.getLastSpeaker();
-		// // Only allow a response if the last speaker has changed since last response
-		// if (currentLastSpeaker !== 'user' && currentLastSpeaker === dialogManager.getLastSpeaker()) return;
-		// Only allow agents to respond if the last speaker is not an agent
-		if (currentLastSpeaker === 'user' || currentLastSpeaker === 'agent2') {
+		// Prevent consecutive responses by the same agent
+		const lastDialogTurn = dialog.length > 0 ? dialog[dialog.length - 1].speaker : null;
+		// Only allow agents to respond if the last speaker is not itself
+		if ((currentLastSpeaker === 'user' || currentLastSpeaker === 'agent2') && lastDialogTurn !== 'agent1') {
 			logger.info('Agent agent1 responding', { dialog: dialog.slice(-6) });
 			try {
-				dialogManager.setLastSpeaker('agent1');
 				const response1 = await agents.agent1.getCompletion(dialog);
 				logger.info('Agent agent1 response', { response: response1 });
 				dialogManager.addTurn('agent1', response1);
-			} catch (agentErr) {
 				dialogManager.setLastSpeaker('agent1');
+			} catch (agentErr) {
 				logger.error('Error from agent1', { error: agentErr });
 				dialogManager.addTurn('agent1', `Error: ${agentErr instanceof Error ? agentErr.message : String(agentErr)}`);
+				dialogManager.setLastSpeaker('agent1');
 			}
 			return;
 		}
-		if (currentLastSpeaker === 'agent1') {
+		if (currentLastSpeaker === 'agent1' && lastDialogTurn !== 'agent2') {
 			logger.info('Agent agent2 responding', { dialog: dialog.slice(-6) });
 			try {
-				dialogManager.setLastSpeaker('agent2');
 				const response2 = await agents.agent2.getCompletion(dialog);
 				logger.info('Agent agent2 response', { response: response2 });
 				dialogManager.addTurn('agent2', response2);
-			} catch (agentErr) {
 				dialogManager.setLastSpeaker('agent2');
+			} catch (agentErr) {
 				logger.error('Error from agent2', { error: agentErr });
 				dialogManager.addTurn('agent2', `Error: ${agentErr instanceof Error ? agentErr.message : String(agentErr)}`);
+				dialogManager.setLastSpeaker('agent2');
 			}
 			return;
 		}
