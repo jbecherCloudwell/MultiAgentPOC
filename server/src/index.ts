@@ -1,11 +1,8 @@
-// Multi-agent support
 import { OllamaAgent } from './ollamaAgent';
+import { DialogManager } from './dialogManager';
 import express from 'express';
 import path from 'path';
 import logger from './logger';
-import { AgentManager } from './manager';
-
-import { Request, Response, NextFunction } from 'express';
 
 
 const app = express();
@@ -13,13 +10,50 @@ const port = process.env.PORT || 4000;
 
 app.use(express.json());
 
-const manager = new AgentManager();
-
 // Store agents by ID (in-memory for now)
 const agents: Record<string, OllamaAgent> = {
 	agent1: new OllamaAgent({ persona: 'You are Agent 1.' }),
 	agent2: new OllamaAgent({ persona: 'You are Agent 2.' })
 };
+
+const dialogManager = new DialogManager(['agent1', 'agent2']);
+let agentLoopActive = false;
+let lastSpeaker: string | null = null;
+let agentResponseInProgress = false;
+
+// Multi-agent support
+// Streaming agent response via SSE
+app.get('/api/agent-stream/:agentId', async (req, res) => {
+	const { agentId } = req.params;
+	if (!agentId || !agents[agentId]) {
+		res.status(400).json({ error: 'Invalid agentId' });
+		return;
+	}
+	// Set SSE headers
+	res.setHeader('Content-Type', 'text/event-stream');
+	res.setHeader('Cache-Control', 'no-cache');
+	res.setHeader('Connection', 'keep-alive');
+	res.flushHeaders?.();
+
+	// Get dialog history (last 24 turns)
+	const dialogSlice = dialogManager.getDialog().slice(-24);
+	try {
+		const stream = await agents[agentId].getCompletionStream(dialogSlice);
+		const reader = stream.getReader();
+		let done = false;
+		while (!done) {
+			const { value, done: streamDone } = await reader.read();
+			if (streamDone) break;
+			// Send each token as SSE event
+			res.write(`data: ${JSON.stringify({ token: value })}\n\n`);
+		}
+		res.write('data: [DONE]\n\n');
+		res.end();
+	} catch (err) {
+		res.write(`data: ${JSON.stringify({ error: err instanceof Error ? err.message : String(err) })}\n\n`);
+		res.end();
+	}
+});
 
 // Log incoming chat requests
 app.use('/api/chat', (req, res, next) => {
@@ -79,48 +113,87 @@ app.post('/api/agents/:agentId/reset', (req, res) => {
 
 // API endpoint for chat with a specific agent
 app.post('/api/chat', async (req, res) => {
+	console.log('Request body:', req.body);
 	try {
-		const { agentId, message, model, persona } = req.body;
-		if (!agentId || !agents[agentId]) {
-			return res.status(400).json({ error: 'Invalid or missing agentId.' });
-		}
+		const { message } = req.body;
 		if (!message || typeof message !== 'string') {
+			logger.error('Invalid message received', { body: req.body });
 			return res.status(400).json({ error: 'Message is required.' });
 		}
-		const agent = agents[agentId];
-		if (model) agent.setModel(model);
-		if (persona) agent.setPersona(persona);
-		agent.addUserMessage(message);
-		const response = await agent.getCompletion();
-		agent.addAssistantMessage(response);
-		res.json({ response });
+		logger.info('User message received', { message });
+	dialogManager.addTurn('user', message);
+	dialogManager.setLastSpeaker('user');
+		// Interrupt and restart agent loop from latest user message
+		agentLoopActive = true;
+		res.json({ dialog: dialogManager.getDialog().slice(-24) });
 	} catch (err) {
+		logger.error('Error in /api/chat', { error: err });
 		res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
 	}
-});
+	
+	// Background agent dialog loop
+	let agentInterval = setInterval(async () => {
+		if (!agentLoopActive || agentResponseInProgress) return;
+		const dialog = dialogManager.getDialog();
+		if (dialog.length === 0) return;
+		const currentLastSpeaker = dialogManager.getLastSpeaker();
+		const lastDialogTurn = dialog.length > 0 ? dialog[dialog.length - 1].speaker : null;
+
+		if ((currentLastSpeaker === 'user' || currentLastSpeaker === 'agent2') && lastDialogTurn !== 'agent1') {
+			agentResponseInProgress = true;
+			logger.info('Agent agent1 responding', { dialog: dialog.slice(-6) });
+			try {
+				const response1 = await agents.agent1.getCompletion(dialog);
+				logger.info('Agent agent1 response', { response: response1 });
+				dialogManager.addTurn('agent1', response1);
+				dialogManager.setLastSpeaker('agent1');
+			} catch (agentErr) {
+				logger.error('Error from agent1', { error: agentErr });
+				dialogManager.addTurn('agent1', `Error: ${agentErr instanceof Error ? agentErr.message : String(agentErr)}`);
+				dialogManager.setLastSpeaker('agent1');
+			}
+			agentResponseInProgress = false;
+			return;
+		}
+		if (currentLastSpeaker === 'agent1' && lastDialogTurn !== 'agent2') {
+			agentResponseInProgress = true;
+			logger.info('Agent agent2 responding', { dialog: dialog.slice(-6) });
+			try {
+				const response2 = await agents.agent2.getCompletion(dialog);
+				logger.info('Agent agent2 response', { response: response2 });
+				dialogManager.addTurn('agent2', response2);
+				dialogManager.setLastSpeaker('agent2');
+			} catch (agentErr) {
+				logger.error('Error from agent2', { error: agentErr });
+				dialogManager.addTurn('agent2', `Error: ${agentErr instanceof Error ? agentErr.message : String(agentErr)}`);
+				dialogManager.setLastSpeaker('agent2');
+			}
+			agentResponseInProgress = false;
+			return;
+		}
+	}, 1000);
+	});
 
 // Redirect root to /chat for user convenience
 app.get('/', (req, res) => {
 	res.redirect('/chat');
 });
 
-// Serve React build at /chat and static assets
-const reactBuildPath = path.join(__dirname, '../../client/build');
-app.use('/chat', express.static(reactBuildPath));
-app.get('/chat', (req, res) => {
-	res.sendFile(path.join(reactBuildPath, 'index.html'));
-});
 
-// POST /chat { user: string, message: string }
-app.post('/chat', async (req, res) => {
-	const { user, message } = req.body;
-	if (!user || !message) {
-		return res.status(400).json({ error: 'Missing user or message' });
-	}
-	const dialog = await manager.handleUserMessage(user, message);
-	res.json(dialog);
-});
+// Serve React build at /chat and static assets only in production
+if (process.env.NODE_ENV === 'production') {
+	const reactBuildPath = path.join(__dirname, '../../client/build');
+	app.use('/chat', express.static(reactBuildPath));
+	app.get('/chat', (req, res) => {
+		res.sendFile(path.join(reactBuildPath, 'index.html'));
+	});
+}
 
 app.listen(port, () => {
 	console.log(`Server running on port ${port}`);
+});
+
+// Return current dialog for real-time UI polling
+app.get('/api/dialog', (req, res) => {
+	res.json({ dialog: dialogManager.getDialog().slice(-24) }); // Return last 24 turns for more context
 });

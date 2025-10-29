@@ -1,0 +1,51 @@
+// DialogManager: orchestrates agent alternation and turn-taking
+
+export type DialogTurn = {
+  speaker: string;
+  message: string;
+};
+
+export class DialogManager {
+  private agents: string[];
+  private dialog: DialogTurn[];
+  private lastSpeaker: string | null = null;
+
+  constructor(agentIds: string[]) {
+    this.agents = agentIds;
+    this.dialog = [];
+  }
+
+  addTurn(speaker: string, message: string) {
+  this.dialog.push({ speaker, message });
+  this.lastSpeaker = speaker;
+  }
+
+  getDialog() {
+    return this.dialog;
+  }
+
+  getLastSpeaker() {
+    if (this.lastSpeaker) return this.lastSpeaker;
+    if (this.dialog.length === 0) return null;
+    return this.dialog[this.dialog.length - 1].speaker;
+
+  }
+
+  setLastSpeaker(speaker: string) {
+    this.lastSpeaker = speaker;
+  }
+
+  getNextAgent() {
+    const lastSpeaker = this.getLastSpeaker();
+    // If last speaker is user, agent1 goes next
+    if (!lastSpeaker || lastSpeaker === 'user') return this.agents[0];
+    // Otherwise, alternate agents
+    const idx = this.agents.indexOf(lastSpeaker);
+    return this.agents[(idx + 1) % this.agents.length];
+  }
+
+  resetDialog() {
+  this.dialog = [];
+  this.lastSpeaker = null;
+  }
+}
