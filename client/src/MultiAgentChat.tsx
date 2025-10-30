@@ -15,7 +15,12 @@ const MultiAgentChat: React.FC = () => {
     }
   };
   const chatWindowRef = React.useRef<HTMLDivElement>(null);
-  const [agentId, setAgentId] = useState('agent1');
+  const [agentId, setAgentId] = useState('');
+  const [agents, setAgents] = useState<{ id: string; persona: string; model: string; messageCount: number }[]>([]);
+  const [newAgentName, setNewAgentName] = useState('');
+  const [newAgentPersona, setNewAgentPersona] = useState('');
+  const [creatingAgent, setCreatingAgent] = useState(false);
+  const [agentError, setAgentError] = useState('');
   const [message, setMessage] = useState('');
   const [dialog, setDialog] = useState<{ speaker: string; message: string }[]>([]);
   const [loading, setLoading] = useState(false);
@@ -23,6 +28,26 @@ const MultiAgentChat: React.FC = () => {
   const streamingMessageRef = React.useRef("");
   const [autoScroll, setAutoScroll] = useState(true);
   const typingTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+
+  // Fetch agent list from backend on mount
+  React.useEffect(() => {
+    const fetchAgents = async () => {
+      try {
+        const res = await fetch('/api/agents');
+        const data = await res.json();
+        if (Array.isArray(data.agents)) {
+          setAgents(data.agents);
+          // If no agentId or current agentId is not in list, set to first agent
+          if (!agentId || !data.agents.some((a: any) => a.id === agentId)) {
+            if (data.agents.length > 0) setAgentId(data.agents[0].id);
+          }
+        }
+      } catch (err) {
+        // Optionally handle error
+      }
+    };
+    fetchAgents();
+  }, []);
 
   // Poll /api/dialog every 1 second for real-time updates
   React.useEffect(() => {
@@ -157,6 +182,87 @@ const MultiAgentChat: React.FC = () => {
   return (
     <div style={{ maxWidth: 500, margin: '40px auto', background: '#fff', borderRadius: 8, boxShadow: '0 2px 8px #0001', padding: 24 }}>
       <h2>MultiAgentPOC Chat</h2>
+      {/* Agent selection dropdown */}
+      <div style={{ marginBottom: 12 }}>
+        <label htmlFor="agent-select" style={{ fontWeight: 'bold', marginRight: 8 }}>Select Agent:</label>
+        <select
+          id="agent-select"
+          value={agentId}
+          onChange={e => setAgentId(e.target.value)}
+          style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid #ccc' }}
+        >
+          {agents.map(agent => (
+            <option key={agent.id} value={agent.id}>
+              {agent.id} ({agent.persona.slice(0, 24)}{agent.persona.length > 24 ? '...' : ''})
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Agent creation form */}
+      <form
+        onSubmit={async e => {
+          e.preventDefault();
+          setAgentError('');
+          if (!newAgentName.trim() || !newAgentPersona.trim()) {
+            setAgentError('Name and persona are required.');
+            return;
+          }
+          setCreatingAgent(true);
+          try {
+            const res = await fetch('/api/agents', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: newAgentName.trim(), persona: newAgentPersona.trim() })
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+              setAgentError(data.error || 'Failed to create agent.');
+            } else {
+              setNewAgentName('');
+              setNewAgentPersona('');
+              // Refresh agent list
+              const agentRes = await fetch('/api/agents');
+              const agentData = await agentRes.json();
+              if (Array.isArray(agentData.agents)) {
+                setAgents(agentData.agents);
+                setAgentId(data.agent.id);
+              }
+            }
+          } catch (err) {
+            setAgentError('Failed to create agent.');
+          }
+          setCreatingAgent(false);
+        }}
+        style={{ marginBottom: 16, display: 'flex', gap: 8, alignItems: 'center' }}
+      >
+        <input
+          type="text"
+          value={newAgentName}
+          onChange={e => setNewAgentName(e.target.value)}
+          placeholder="Agent name"
+          style={{ flex: 1, padding: 8, borderRadius: 4, border: '1px solid #ccc' }}
+          disabled={creatingAgent}
+        />
+        <input
+          type="text"
+          value={newAgentPersona}
+          onChange={e => setNewAgentPersona(e.target.value)}
+          placeholder="Agent persona/description"
+          style={{ flex: 2, padding: 8, borderRadius: 4, border: '1px solid #ccc' }}
+          disabled={creatingAgent}
+        />
+        <button
+          type="submit"
+          disabled={creatingAgent}
+          style={{ padding: '8px 16px', border: 'none', borderRadius: 4, background: '#388e3c', color: '#fff', cursor: 'pointer' }}
+        >
+          {creatingAgent ? 'Creating...' : 'Add Agent'}
+        </button>
+      </form>
+      {agentError && (
+        <div style={{ color: '#b71c1c', marginBottom: 8 }}>{agentError}</div>
+      )}
       {/* Error alert if any System message in dialog */}
       {dialog.some(turn => turn.speaker === 'System') && (
         <div style={{ background: '#ffe0e0', color: '#b71c1c', padding: '8px 12px', borderRadius: 4, marginBottom: 12, fontWeight: 'bold' }}>

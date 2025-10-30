@@ -1,3 +1,8 @@
+## [0.1.3] - 2025-10-29
+- Feature: Agent selection in UI and backend; selected agent responds first after user message
+- Backend: DialogManager tracks selected agent and uses it for next response
+- API: /api/chat now accepts agentId and sets selected agent for alternation
+- Documentation updated for agent creation and selection
 # Changelog
 
 All notable changes to this project will be documented in this file.
