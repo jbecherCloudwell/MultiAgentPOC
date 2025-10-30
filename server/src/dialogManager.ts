@@ -11,16 +11,27 @@ export type DialogTurn = {
   timestamp?: number;
 };
 
+
 export class DialogManager {
   public agents: string[];
   private dialog: DialogTurn[];
   private lastSpeaker: string | null = null;
   private selectedAgent: string | null = null;
   private userTyping: boolean = false;
+  private participantIds: string[] = [];
 
   constructor(agentIds: string[]) {
     this.agents = agentIds;
     this.dialog = [];
+    this.participantIds = agentIds;
+  }
+
+  setParticipants(ids: string[]) {
+    this.participantIds = ids;
+    this.agents = ids;
+  }
+  getParticipants() {
+    return this.participantIds;
   }
 
   setSelectedAgent(agentId: string) {
@@ -73,17 +84,18 @@ export class DialogManager {
   }
 
   getNextAgent() {
+    const participants = this.participantIds.length > 0 ? this.participantIds : this.agents;
     const lastSpeaker = this.getLastSpeaker();
     // If last speaker is user, use selected agent if set
     if (!lastSpeaker || lastSpeaker === 'user') {
-      if (this.selectedAgent && this.agents.includes(this.selectedAgent)) {
+      if (this.selectedAgent && participants.includes(this.selectedAgent)) {
         return this.selectedAgent;
       }
-      return this.agents[0];
+      return participants[0];
     }
-    // Otherwise, alternate agents
-    const idx = this.agents.indexOf(lastSpeaker);
-    return this.agents[(idx + 1) % this.agents.length];
+    // Otherwise, alternate among participants
+    const idx = participants.indexOf(lastSpeaker);
+    return participants[(idx + 1) % participants.length];
   }
 
   resetDialog() {
