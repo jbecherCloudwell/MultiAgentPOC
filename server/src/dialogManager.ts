@@ -1,8 +1,14 @@
 // DialogManager: orchestrates agent alternation and turn-taking
 
+function uuidv4() {
+  return 'temp-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
+}
+
 export type DialogTurn = {
+  id: string;
   speaker: string;
   message: string;
+  timestamp?: number;
 };
 
 export class DialogManager {
@@ -41,7 +47,13 @@ export class DialogManager {
   }
 
   addTurn(speaker: string, message: string) {
-    this.dialog.push({ speaker, message });
+    const turn: DialogTurn = {
+      id: uuidv4(),
+      speaker,
+      message,
+      timestamp: Date.now()
+    };
+    this.dialog.push(turn);
     this.lastSpeaker = speaker;
   }
 

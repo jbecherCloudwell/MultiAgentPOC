@@ -50,18 +50,20 @@ Proof-of-concept Node.js app (TypeScript + Express) for multi-agent dialog:
 - `client/src/MultiAgentChat.tsx`: React chat UI component for agent selection, agent creation, and messaging
 
 ## Features
-- **Dynamic agent creation**: Create agents with custom persona and model via UI or API
-- **Agent selection**: Select which agent should respond next after a user message
-- **Turn-lock**: Only one agent responds per turn, strict alternation enforced
-- **DialogManager**: Tracks dialog turns, last speaker, and selected agent for robust alternation
-- **Streaming backend**: SSE endpoint streams agent responses (frontend streaming in progress)
-- **Extensible**: Add more agents or swap logic easily
+**Dynamic agent creation**: Create agents with custom persona and model via UI or API
+**Agent selection**: Select which agent should respond next after a user message
+**Turn-lock**: Only one agent responds per turn, strict alternation enforced
+**DialogManager**: Tracks dialog turns, last speaker, and selected agent for robust alternation
+**Streaming backend**: SSE endpoint streams agent responses (frontend streaming in progress)
+**Robust dialog sync**: Frontend now replaces temp agent turns with backend responses, preventing flicker and duplicate entries
+**Extensible**: Add more agents or swap logic easily
 
 ## Agent Creation & Selection
 
-- Use the UI form or `POST /api/agents` to create a new agent with a name and persona
-- Select an agent from the dropdown to choose who responds next after your message
-- The backend uses your selected agent for the next response, then alternates among agents
+Use the UI form or `POST /api/agents` to create a new agent with a name and persona
+Select an agent from the dropdown to choose who responds next after your message
+The backend uses your selected agent for the next response, then alternates among agents
+Dialog sync is robust: temp agent turns are replaced by backend responses, so the UI never flickers or shows duplicate/blank entries
 
 ## Changelog
 See `CHANGELOG.md` for a summary of recent changes and version history.

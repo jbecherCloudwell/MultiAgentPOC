@@ -4,6 +4,11 @@
 - API: /api/chat now accepts agentId and sets selected agent for alternation
 - Documentation updated for agent creation and selection
 # Changelog
+#
+## [0.1.4] - 2025-10-29
+- Bug fix: Chat flicker resolved—frontend now robustly replaces temp agent turns with backend responses, preventing duplicate or blank entries
+- Improved dialog sync logic for agent/user turns
+- Documentation updated for agent creation, alternation, and dialog sync
 
 All notable changes to this project will be documented in this file.
 

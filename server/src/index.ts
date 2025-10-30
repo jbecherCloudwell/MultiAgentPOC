@@ -224,7 +224,9 @@ app.listen(port, () => {
 
 // Return current dialog for real-time UI polling
 app.get('/api/dialog', (req, res) => {
-	res.json({ dialog: dialogManager.getDialog().slice(-24) }); // Return last 24 turns for more context
+		const dialog = dialogManager.getDialog().slice(-24);
+		dialog.sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0));
+		res.json({ dialog });
 });
 
 app.delete('/api/agents/:agentId', (req, res) => {
