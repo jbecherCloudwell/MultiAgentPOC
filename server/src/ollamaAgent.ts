@@ -116,6 +116,11 @@ export class OllamaAgent {
 		return readable;
 	}
 
+
+	getModel() {
+		return this.model;
+	}
+
 	setModel(model: string) {
 		this.model = model;
 	}
@@ -127,5 +132,12 @@ export class OllamaAgent {
 
 	resetMessages() {
 		this.messages = [{ role: 'system', content: this.persona }];
+	}
+
+	getPersona() {
+		return this.persona;
+	}
+	getMessages() {
+		return this.messages;
 	}
 }

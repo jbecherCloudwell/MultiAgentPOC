@@ -32,25 +32,41 @@ Proof-of-concept Node.js app (TypeScript + Express) for multi-agent dialog:
 
 ## Endpoints
 
-- `GET /` &rarr; Redirects to `/chat`
-- `GET /chat` &rarr; Serves browser chat UI
-- `POST /chat` &rarr; Accepts `{ user, message }` JSON and returns updated dialog
-
+- `GET /` → Redirects to `/chat`
+- `GET /chat` → Serves browser chat UI
+- `POST /chat` → Accepts `{ agentId, message }` JSON and returns updated dialog. The selected agent will respond next.
+- `POST /api/agents` → Create a new agent with `{ name, persona, model }`.
+- `GET /api/agents` → List all agents.
+- `POST /api/agents/:agentId/reset` → Reset an agent's dialog history.
+- `DELETE /api/agents/:agentId` → Delete an agent.
+- `POST /api/user-typing` → Set user typing state.
+- `GET /api/dialog` → Get current dialog history.
+- `POST /api/dialog/reset` → Reset dialog history.
 
 ## Project Structure
 - `server/src/index.ts`: Express entry point, serves UI, handles redirects and API
-- `server/src/dialogManager.ts`: Orchestrates dialog turns and tracks last speaker
+- `server/src/dialogManager.ts`: Orchestrates dialog turns, tracks last speaker, and manages selected agent
 - `server/src/ollamaAgent.ts`: Agent logic (replaceable with real AI)
-- `client/src/MultiAgentChat.tsx`: React chat UI component for agent selection and messaging
+- `client/src/MultiAgentChat.tsx`: React chat UI component for agent selection, agent creation, and messaging
+
 ## Features
-- Turn-lock: Only one agent responds per turn, strict alternation enforced
-- User-agent-agent dialog: User triggers agent1, then agent2 responds to agent1
-- DialogManager: Tracks dialog turns and last speaker
-- Streaming backend: SSE endpoint streams agent responses (frontend streaming in progress)
-- Extensible: Add more agents or swap logic easily
+- **Dynamic agent creation**: Create agents with custom persona and model via UI or API
+- **Agent selection**: Select which agent should respond next after a user message
+- **Turn-lock**: Only one agent responds per turn, strict alternation enforced
+- **DialogManager**: Tracks dialog turns, last speaker, and selected agent for robust alternation
+- **Streaming backend**: SSE endpoint streams agent responses (frontend streaming in progress)
+- **Extensible**: Add more agents or swap logic easily
+
+## Agent Creation & Selection
+
+- Use the UI form or `POST /api/agents` to create a new agent with a name and persona
+- Select an agent from the dropdown to choose who responds next after your message
+- The backend uses your selected agent for the next response, then alternates among agents
+
 ## Changelog
 See `CHANGELOG.md` for a summary of recent changes and version history.
 
+## Usage
 
 1. Install dependencies in both `server/` and `client/`:
    ```sh
@@ -71,5 +87,5 @@ See `CHANGELOG.md` for a summary of recent changes and version history.
    - You will be redirected to `/chat` and see the interactive chat UI
 5. (API) Send POST requests to `/api/chat` with JSON body:
    ```json
-   { "agentId": "agent1", "message": "Hello agents!" }
+   { "agentId": "Rambler", "message": "Hello agents!" }
    ```
