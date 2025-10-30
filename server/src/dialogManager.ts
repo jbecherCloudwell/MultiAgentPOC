@@ -9,10 +9,21 @@ export class DialogManager {
   private agents: string[];
   private dialog: DialogTurn[];
   private lastSpeaker: string | null = null;
+  private userTyping: boolean = false;
 
   constructor(agentIds: string[]) {
     this.agents = agentIds;
     this.dialog = [];
+  }
+  setUserTyping(typing: boolean) {
+    console.log(`[DialogManager] setUserTyping called: ${typing}`);
+    this.userTyping = typing;
+    console.log(`[DialogManager] userTyping now: ${this.userTyping}`);
+  }
+
+  getUserTyping() {
+    console.log(`[DialogManager] getUserTyping called, returning: ${this.userTyping}`);
+    return this.userTyping;
   }
 
   addTurn(speaker: string, message: string) {

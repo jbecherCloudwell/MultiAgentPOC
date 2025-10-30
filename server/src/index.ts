@@ -12,14 +12,34 @@ app.use(express.json());
 
 // Store agents by ID (in-memory for now)
 const agents: Record<string, OllamaAgent> = {
-	agent1: new OllamaAgent({ persona: 'You are Agent 1.' }),
-	agent2: new OllamaAgent({ persona: 'You are Agent 2.' })
+	// agent1: new OllamaAgent({ persona: 'You are designed strictly for testing purposes. You provide responses that are 5 words long.' }),
+	// agent2: new OllamaAgent({ persona: 'You are designed strictly for testing purposes. You provide responses that are 5 words long.' })
+	agent1: new OllamaAgent({ persona: 'You are designed strictly for testing purposes. You provide responses that are 50 words long.' }),
+	agent2: new OllamaAgent({ persona: 'You are designed strictly for testing purposes. You provide responses that are 50 words long.' })
 };
 
 const dialogManager = new DialogManager(['agent1', 'agent2']);
 let agentLoopActive = false;
 let lastSpeaker: string | null = null;
 let agentResponseInProgress = false;
+// userTyping now managed by dialogManager
+// API endpoint to set userTyping flag
+app.post('/api/user-typing', (req, res) => {
+	logger.info('[api/user-typing] Received request', { body: req.body });
+	const { typing } = req.body;
+	dialogManager.setUserTyping(Boolean(typing));
+	logger.info(`[userTyping] Set to ${dialogManager.getUserTyping()} by /api/user-typing`, { typing });
+	// If userTyping is now false (user cleared box), restart agent loop if last speaker is user
+	if (!Boolean(typing)) {
+		const dialog = dialogManager.getDialog();
+		const lastTurn = dialog.length > 0 ? dialog[dialog.length - 1] : null;
+		if (lastTurn) {
+			agentLoopActive = true;
+			logger.info('[userTyping] Restarting agent loop after user cleared text box', { lastUserMessage: lastTurn.message });
+		}
+	}
+	res.json({ success: true, userTyping: dialogManager.getUserTyping() });
+});
 
 // Multi-agent support
 // Streaming agent response via SSE
@@ -133,7 +153,12 @@ app.post('/api/chat', async (req, res) => {
 	
 	// Background agent dialog loop
 	let agentInterval = setInterval(async () => {
-		if (!agentLoopActive || agentResponseInProgress) return;
+	if (!agentLoopActive || agentResponseInProgress) return;
+	if (dialogManager.getUserTyping()) {
+		agentLoopActive = false;
+		logger.info('[agentLoop] Pausing agent loop due to user typing', { userTyping: dialogManager.getUserTyping() });
+		return;
+	}
 		const dialog = dialogManager.getDialog();
 		if (dialog.length === 0) return;
 		const currentLastSpeaker = dialogManager.getLastSpeaker();
@@ -141,14 +166,48 @@ app.post('/api/chat', async (req, res) => {
 
 		if ((currentLastSpeaker === 'user' || currentLastSpeaker === 'agent2') && lastDialogTurn !== 'agent1') {
 			agentResponseInProgress = true;
-			logger.info('Agent agent1 responding', { dialog: dialog.slice(-6) });
+			logger.info(`[agentLoop] agent1 responding (userTyping=${dialogManager.getUserTyping()})`, { dialog: dialog.slice(-6) });
 			try {
-				const response1 = await agents.agent1.getCompletion(dialog);
-				logger.info('Agent agent1 response', { response: response1 });
+				// Check before generating response
+				if (dialogManager.getUserTyping()) {
+					logger.info('[agentLoop] Agent agent1 skipped due to user typing', { userTyping: dialogManager.getUserTyping() });
+					agentResponseInProgress = false;
+					return;
+				}
+				// Use AbortController to interrupt agent response if userTyping becomes true
+				const abortController = new AbortController();
+				// Poll userTyping every 100ms during await
+				let response1: string | undefined;
+				let done = false;
+				const poll = setInterval(() => {
+					if (dialogManager.getUserTyping() && !done) {
+						abortController.abort();
+						logger.info('[agentLoop] Agent agent1 response aborted due to user typing', { userTyping: dialogManager.getUserTyping() });
+					}
+				}, 100);
+				try {
+					response1 = await agents.agent1.getCompletion(dialog, abortController.signal);
+					done = true;
+				} catch (err) {
+					if (abortController.signal.aborted) {
+						agentResponseInProgress = false;
+						clearInterval(poll);
+						return;
+					}
+					throw err;
+				}
+				clearInterval(poll);
+				// Check again after response in case user started typing during await
+				if (dialogManager.getUserTyping()) {
+					logger.info('[agentLoop] Agent agent1 response discarded due to user typing', { userTyping: dialogManager.getUserTyping() });
+					agentResponseInProgress = false;
+					return;
+				}
+				logger.info('[agentLoop] Agent agent1 response accepted', { response: response1 });
 				dialogManager.addTurn('agent1', response1);
 				dialogManager.setLastSpeaker('agent1');
 			} catch (agentErr) {
-				logger.error('Error from agent1', { error: agentErr });
+				logger.error('[agentLoop] Error from agent1', { error: agentErr });
 				dialogManager.addTurn('agent1', `Error: ${agentErr instanceof Error ? agentErr.message : String(agentErr)}`);
 				dialogManager.setLastSpeaker('agent1');
 			}
@@ -157,14 +216,47 @@ app.post('/api/chat', async (req, res) => {
 		}
 		if (currentLastSpeaker === 'agent1' && lastDialogTurn !== 'agent2') {
 			agentResponseInProgress = true;
-			logger.info('Agent agent2 responding', { dialog: dialog.slice(-6) });
+			logger.info(`[agentLoop] agent2 responding (userTyping=${dialogManager.getUserTyping()})`, { dialog: dialog.slice(-6) });
 			try {
-				const response2 = await agents.agent2.getCompletion(dialog);
-				logger.info('Agent agent2 response', { response: response2 });
+				// Check before generating response
+				if (dialogManager.getUserTyping()) {
+					logger.info('[agentLoop] Agent agent2 skipped due to user typing', { userTyping: dialogManager.getUserTyping() });
+					agentResponseInProgress = false;
+					return;
+				}
+				// Use AbortController to interrupt agent response if userTyping becomes true
+				const abortController = new AbortController();
+				let response2: string | undefined;
+				let done = false;
+				const poll = setInterval(() => {
+					if (dialogManager.getUserTyping() && !done) {
+						abortController.abort();
+						logger.info('[agentLoop] Agent agent2 response aborted due to user typing', { userTyping: dialogManager.getUserTyping() });
+					}
+				}, 100);
+				try {
+					response2 = await agents.agent2.getCompletion(dialog, abortController.signal);
+					done = true;
+				} catch (err) {
+					if (abortController.signal.aborted) {
+						agentResponseInProgress = false;
+						clearInterval(poll);
+						return;
+					}
+					throw err;
+				}
+				clearInterval(poll);
+				// Check again after response in case user started typing during await
+				if (dialogManager.getUserTyping()) {
+					logger.info('[agentLoop] Agent agent2 response discarded due to user typing', { userTyping: dialogManager.getUserTyping() });
+					agentResponseInProgress = false;
+					return;
+				}
+				logger.info('[agentLoop] Agent agent2 response accepted', { response: response2 });
 				dialogManager.addTurn('agent2', response2);
 				dialogManager.setLastSpeaker('agent2');
 			} catch (agentErr) {
-				logger.error('Error from agent2', { error: agentErr });
+				logger.error('[agentLoop] Error from agent2', { error: agentErr });
 				dialogManager.addTurn('agent2', `Error: ${agentErr instanceof Error ? agentErr.message : String(agentErr)}`);
 				dialogManager.setLastSpeaker('agent2');
 			}
