@@ -22,6 +22,8 @@ const MultiAgentChat: React.FC = () => {
   const chatWindowRef = React.useRef<HTMLDivElement>(null);
   const [agentId, setAgentId] = useState('');
   const [agents, setAgents] = useState<{ id: string; persona: string; model: string; messageCount: number }[]>([]);
+  // Track which agents are active in the conversation
+  const [activeAgentIds, setActiveAgentIds] = useState<string[]>([]);
   const [newAgentName, setNewAgentName] = useState('');
   const [newAgentPersona, setNewAgentPersona] = useState('');
   const [creatingAgent, setCreatingAgent] = useState(false);
@@ -35,6 +37,19 @@ const MultiAgentChat: React.FC = () => {
   const streamingMessageRef = React.useRef("");
   const [autoScroll, setAutoScroll] = useState(true);
   const typingTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+  
+  // Sync participant selection with backend whenever activeAgentIds changes
+  React.useEffect(() => {
+    if (activeAgentIds.length === 0) return;
+    fetch('/api/participants', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ participantIds: activeAgentIds })
+    }).catch(err => {
+      // Optionally handle error
+      console.error('Error updating participants:', err);
+    });
+  }, [activeAgentIds]);
 
   // Fetch agent list from backend on mount
   React.useEffect(() => {
@@ -48,6 +63,8 @@ const MultiAgentChat: React.FC = () => {
           if (!agentId || !data.agents.some((a: any) => a.id === agentId)) {
             if (data.agents.length > 0) setAgentId(data.agents[0].id);
           }
+          // Default: all agents active
+          setActiveAgentIds(data.agents.map((a: any) => a.id));
         }
       } catch (err) {
         // Optionally handle error
@@ -145,54 +162,32 @@ const MultiAgentChat: React.FC = () => {
     setLoading(true);
     setStreamingMessage("");
     streamingMessageRef.current = "";
-    // Immediately set userTyping to false and clear debounce
     if (typingDebounceRef.current) {
       clearTimeout(typingDebounceRef.current);
     }
-    await setUserTyping(false); // User finished typing
-    // Optimistically add user message and agent turn with temp IDs
+    await setUserTyping(false);
+    // Optimistically add user message and agent turns for all active agents
     setDialog((d) => [
       ...d,
       { id: generateTempId(), speaker: 'user', message, status: 'pending' },
-      { id: generateTempId(), speaker: agentId, message: '', status: 'pending' }
+  ...activeAgentIds.map(aid => ({ id: generateTempId(), speaker: aid, message: '', status: 'pending' as 'pending' }))
     ]);
     try {
       await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ agentId, message })
+        body: JSON.stringify({ message, participantIds: activeAgentIds })
       });
       setMessage('');
-      // Start streaming agent response
-      const eventSource = new EventSource(`/api/agent-stream/${agentId}`);
-      eventSource.onmessage = (event) => {
-        if (event.data === '[DONE]') {
-          // Finalize agent message in dialog
-          if (streamingMessageRef.current.length > 0) {
-            setDialog((d) => {
-              // Update last agent turn with final message
-              const idx = d.findIndex((turn, i) => turn.speaker === agentId && i === d.length - 1);
-              if (idx !== -1) {
-                const updated = [...d];
-                updated[idx] = { ...updated[idx], message: streamingMessageRef.current };
-                return updated;
-              }
-              return d;
-            });
-          }
-          streamingMessageRef.current = "";
-          setStreamingMessage("");
-          eventSource.close();
-          setLoading(false);
-        } else {
-          try {
-            const data = JSON.parse(event.data);
-            if (data.token) {
-              streamingMessageRef.current += data.token;
-              setStreamingMessage(streamingMessageRef.current);
+      // Optionally, start streaming for each agent (if supported)
+      // For now, just stream for the first agent
+      if (activeAgentIds.length > 0) {
+        const eventSource = new EventSource(`/api/agent-stream/${activeAgentIds[0]}`);
+        eventSource.onmessage = (event) => {
+          if (event.data === '[DONE]') {
+            if (streamingMessageRef.current.length > 0) {
               setDialog((d) => {
-                // Update last agent turn with current streaming message
-                const idx = d.findIndex((turn, i) => turn.speaker === agentId && i === d.length - 1);
+                const idx = d.findIndex((turn, i) => turn.speaker === activeAgentIds[0] && i === d.length - 1);
                 if (idx !== -1) {
                   const updated = [...d];
                   updated[idx] = { ...updated[idx], message: streamingMessageRef.current };
@@ -201,38 +196,59 @@ const MultiAgentChat: React.FC = () => {
                 return d;
               });
             }
-            if (data.error) {
+            streamingMessageRef.current = "";
+            setStreamingMessage("");
+            eventSource.close();
+            setLoading(false);
+          } else {
+            try {
+              const data = JSON.parse(event.data);
+              if (data.token) {
+                streamingMessageRef.current += data.token;
+                setStreamingMessage(streamingMessageRef.current);
+                setDialog((d) => {
+                  const idx = d.findIndex((turn, i) => turn.speaker === activeAgentIds[0] && i === d.length - 1);
+                  if (idx !== -1) {
+                    const updated = [...d];
+                    updated[idx] = { ...updated[idx], message: streamingMessageRef.current };
+                    return updated;
+                  }
+                  return d;
+                });
+              }
+              if (data.error) {
+                setDialog((d) => [
+                  ...d,
+                  { id: generateTempId(), speaker: 'System', message: `Error: ${data.error}`, status: 'confirmed', timestamp: Date.now() }
+                ]);
+                streamingMessageRef.current = "";
+                setStreamingMessage("");
+                eventSource.close();
+                setLoading(false);
+              }
+            } catch (err) {
               setDialog((d) => [
                 ...d,
-                { id: generateTempId(), speaker: 'System', message: `Error: ${data.error}`, status: 'confirmed', timestamp: Date.now() }
+                { id: generateTempId(), speaker: 'System', message: 'Streaming error: invalid data.', status: 'confirmed', timestamp: Date.now() }
               ]);
               streamingMessageRef.current = "";
               setStreamingMessage("");
               eventSource.close();
               setLoading(false);
             }
-          } catch (err) {
-            setDialog((d) => [
-              ...d,
-              { id: generateTempId(), speaker: 'System', message: 'Streaming error: invalid data.', status: 'confirmed', timestamp: Date.now() }
-            ]);
-            streamingMessageRef.current = "";
-            setStreamingMessage("");
-            eventSource.close();
-            setLoading(false);
           }
-        }
-      };
-      eventSource.onerror = () => {
-        setDialog((d) => [
-          ...d,
-          { id: generateTempId(), speaker: 'System', message: 'Streaming error: connection lost.', status: 'confirmed', timestamp: Date.now() }
-        ]);
-        streamingMessageRef.current = "";
-        setStreamingMessage("");
-        eventSource.close();
-        setLoading(false);
-      };
+        };
+        eventSource.onerror = () => {
+          setDialog((d) => [
+            ...d,
+            { id: generateTempId(), speaker: 'System', message: 'Streaming error: connection lost.', status: 'confirmed', timestamp: Date.now() }
+          ]);
+          streamingMessageRef.current = "";
+          setStreamingMessage("");
+          eventSource.close();
+          setLoading(false);
+        };
+      }
     } catch (err) {
       setDialog((d) => [
         ...d,
@@ -265,21 +281,33 @@ const MultiAgentChat: React.FC = () => {
   return (
     <div style={{ maxWidth: 500, margin: '40px auto', background: '#fff', borderRadius: 8, boxShadow: '0 2px 8px #0001', padding: 24 }}>
       <h2>MultiAgentPOC Chat</h2>
-      {/* Agent selection dropdown */}
+      {/* Agent participant selection */}
       <div style={{ marginBottom: 12 }}>
-        <label htmlFor="agent-select" style={{ fontWeight: 'bold', marginRight: 8 }}>Select Agent:</label>
-        <select
-          id="agent-select"
-          value={agentId}
-          onChange={e => setAgentId(e.target.value)}
-          style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid #ccc' }}
-        >
+        <label style={{ fontWeight: 'bold', marginRight: 8 }}>Conversation Participants:</label>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
           {agents.map(agent => (
-            <option key={agent.id} value={agent.id}>
-              {agent.id} ({agent.persona.slice(0, 24)}{agent.persona.length > 24 ? '...' : ''})
-            </option>
+            <label key={agent.id} style={{ display: 'flex', alignItems: 'center', gap: 4, background: activeAgentIds.includes(agent.id) ? '#e3f2fd' : '#f9f9f9', borderRadius: 4, padding: '2px 8px' }}>
+              <input
+                type="checkbox"
+                checked={activeAgentIds.includes(agent.id)}
+                onChange={e => {
+                  setActiveAgentIds(ids => e.target.checked ? [...ids, agent.id] : ids.filter(id => id !== agent.id));
+                }}
+              />
+              <span style={{ fontWeight: 'bold' }}>{agent.id}</span>
+              <span style={{ color: '#888', fontSize: '0.9em' }}>({agent.persona.slice(0, 18)}{agent.persona.length > 18 ? '...' : ''})</span>
+            </label>
           ))}
-        </select>
+        </div>
+      </div>
+      {/* Active agents feedback */}
+      <div style={{ marginBottom: 8 }}>
+        <span style={{ fontWeight: 'bold', color: '#1976d2' }}>Active agents:</span>
+        {activeAgentIds.length === 0 ? (
+          <span style={{ color: '#b71c1c', marginLeft: 8 }}>None selected</span>
+        ) : (
+          <span style={{ marginLeft: 8 }}>{activeAgentIds.map(id => <span key={id} style={{ marginRight: 8 }}>{id}</span>)}</span>
+        )}
       </div>
 
         {/* Agent creation form */}

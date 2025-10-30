@@ -56,6 +56,7 @@ Proof-of-concept Node.js app (TypeScript + Express) for multi-agent dialog:
 **DialogManager**: Tracks dialog turns, last speaker, and selected agent for robust alternation
 **Streaming backend**: SSE endpoint streams agent responses (frontend streaming in progress)
 **Robust dialog sync**: Frontend now replaces temp agent turns with backend responses, preventing flicker and duplicate entries
+**Live participant sync**: Agents can be added or removed from the conversation at any time; backend updates immediately and only selected agents respond
 **Extensible**: Add more agents or swap logic easily
 
 ## Agent Creation & Selection
@@ -64,6 +65,8 @@ Use the UI form or `POST /api/agents` to create a new agent with a name and pers
 Select an agent from the dropdown to choose who responds next after your message
 The backend uses your selected agent for the next response, then alternates among agents
 Dialog sync is robust: temp agent turns are replaced by backend responses, so the UI never flickers or shows duplicate/blank entries
+
+Live participant sync: You can add or remove agents from the conversation at any time—even while agents are talking to each other. The backend updates instantly and only selected agents will respond.
 
 ## Changelog
 See `CHANGELOG.md` for a summary of recent changes and version history.

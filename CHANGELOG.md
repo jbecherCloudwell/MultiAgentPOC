@@ -5,6 +5,11 @@
 - Documentation updated for agent creation and selection
 # Changelog
 #
+## [0.1.5] - 2025-10-30
+- Feature: Real-time participant sync—agents can be added/removed mid-conversation and backend updates immediately
+- UI and backend now support dynamic agent control during agent-to-agent dialog
+- Documentation updated for participant selection and live sync
+#
 ## [0.1.4] - 2025-10-29
 - Bug fix: Chat flicker resolved—frontend now robustly replaces temp agent turns with backend responses, preventing duplicate or blank entries
 - Improved dialog sync logic for agent/user turns

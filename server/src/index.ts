@@ -1,3 +1,4 @@
+
 import { OllamaAgent } from './ollamaAgent';
 import { DialogManager } from './dialogManager';
 import express from 'express';
@@ -30,8 +31,12 @@ let agentInterval = setInterval(async () => {
 	const dialog = dialogManager.getDialog();
 	if (dialog.length === 0) return;
 	const currentLastSpeaker = dialogManager.getLastSpeaker();
+	// Always use current participants for alternation
+	const participants = dialogManager.getParticipants();
+	if (!participants || participants.length === 0) return;
 	const nextAgentId = dialogManager.getNextAgent();
-	if (!nextAgentId || !agents[nextAgentId]) return;
+	// If nextAgentId is not in participants, skip
+	if (!nextAgentId || !agents[nextAgentId] || !participants.includes(nextAgentId)) return;
 	// Only respond if last speaker is not the next agent
 	if (currentLastSpeaker === nextAgentId) return;
 
@@ -172,22 +177,29 @@ app.post('/api/agents/:agentId/reset', (req, res) => {
 	res.json({ success: true });
 });
 
-// API endpoint for chat with a specific agent
+// API endpoint for chat with participating agents
 app.post('/api/chat', async (req, res) => {
 	console.log('Request body:', req.body);
 	try {
-		const { message, agentId } = req.body;
+		const { message, participantIds } = req.body;
 		if (!message || typeof message !== 'string') {
 			logger.error('Invalid message received', { body: req.body });
 			return res.status(400).json({ error: 'Message is required.' });
 		}
-		if (!agentId || !agents[agentId]) {
-			logger.error('Invalid agentId received', { body: req.body });
-			return res.status(400).json({ error: 'agentId is required and must be valid.' });
+		if (!Array.isArray(participantIds) || participantIds.length === 0) {
+			logger.error('Invalid participantIds received', { body: req.body });
+			return res.status(400).json({ error: 'participantIds is required and must be a non-empty array.' });
 		}
-		logger.info('User message received', { message, agentId });
-		// Set selected agent for next response
-		dialogManager.setSelectedAgent(agentId);
+		// Validate agent IDs
+		const validIds = participantIds.filter(id => typeof id === 'string' && agents[id]);
+		if (validIds.length === 0) {
+			logger.error('No valid agent IDs in participantIds', { body: req.body });
+			return res.status(400).json({ error: 'No valid agent IDs in participantIds.' });
+		}
+		logger.info('User message received', { message, participantIds: validIds });
+	// Set active agents for this conversation (persist in dialogManager)
+	dialogManager.setParticipants(validIds);
+	dialogManager.setSelectedAgent(validIds[0]);
 		dialogManager.addTurn('user', message);
 		dialogManager.setLastSpeaker('user');
 		agentLoopActive = true;
@@ -256,4 +268,20 @@ app.get('/api/agents/:agentId', (req, res) => {
 		persona: agent.getPersona ? agent.getPersona() : undefined,
 		messageCount: agent.getMessages ? agent.getMessages().length : undefined
 	});
+});
+// Update participants list immediately
+app.post('/api/participants', (req, res) => {
+	const { participantIds } = req.body;
+	if (!Array.isArray(participantIds) || participantIds.length === 0) {
+		return res.status(400).json({ error: 'participantIds must be a non-empty array.' });
+	}
+	// Validate agent IDs
+	const validIds = participantIds.filter(id => typeof id === 'string' && agents[id]);
+	if (validIds.length === 0) {
+		return res.status(400).json({ error: 'No valid agent IDs in participantIds.' });
+	}
+	dialogManager.setParticipants(validIds);
+	// Optionally set selected agent to first in list
+	dialogManager.setSelectedAgent(validIds[0]);
+	res.json({ success: true, participants: validIds });
 });
