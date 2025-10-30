@@ -12,8 +12,10 @@ app.use(express.json());
 
 // Store agents by ID (in-memory for now)
 const agents: Record<string, OllamaAgent> = {
-	agent1: new OllamaAgent({ persona: 'You are designed strictly for testing purposes. You provide responses that are 5 words long.' }),
-	agent2: new OllamaAgent({ persona: 'You are designed strictly for testing purposes. You provide responses that are 5 words long.' })
+	// agent1: new OllamaAgent({ persona: 'You are designed strictly for testing purposes. You provide responses that are 5 words long.' }),
+	// agent2: new OllamaAgent({ persona: 'You are designed strictly for testing purposes. You provide responses that are 5 words long.' })
+	agent1: new OllamaAgent({ persona: 'You are designed strictly for testing purposes. You provide responses that are 50 words long.' }),
+	agent2: new OllamaAgent({ persona: 'You are designed strictly for testing purposes. You provide responses that are 50 words long.' })
 };
 
 const dialogManager = new DialogManager(['agent1', 'agent2']);
