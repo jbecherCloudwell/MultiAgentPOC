@@ -8,9 +8,12 @@ All notable changes to this project will be documented in this file.
 - Added CHANGELOG.md and semantic versioning to package.json
 - Backend: turn-lock, agent alternation, DialogManager, streaming backend
 
-## [0.1.0] - 2025-10-29
-- Initial changelog created
-- Added turn-lock mechanism to backend for strict agent alternation
+
+## [0.1.2] - 2025-10-29
+- Feature: Agent loop now restarts automatically when user clears text box, using most recent message
+- Hybrid dialog management: frontend manages local state, backend enforces agent alternation and turn-lock
+- Frontend: Optimistic UI, error handling, loading spinner, debounce typing state, dialog sync
+- Backend: Strict alternation logic reviewed and confirmed robust
 - Agents now communicate with each other and the user in a turn-based fashion
 - DialogManager tracks last speaker and dialog turns
 - Streaming backend implemented (SSE), frontend integration in progress
