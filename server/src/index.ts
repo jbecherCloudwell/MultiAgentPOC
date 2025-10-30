@@ -27,6 +27,15 @@ app.post('/api/user-typing', (req, res) => {
 	const { typing } = req.body;
 	dialogManager.setUserTyping(Boolean(typing));
 	logger.info(`[userTyping] Set to ${dialogManager.getUserTyping()} by /api/user-typing`, { typing });
+	// If userTyping is now false (user cleared box), restart agent loop if last speaker is user
+	if (!Boolean(typing)) {
+		const dialog = dialogManager.getDialog();
+		const lastTurn = dialog.length > 0 ? dialog[dialog.length - 1] : null;
+		if (lastTurn) {
+			agentLoopActive = true;
+			logger.info('[userTyping] Restarting agent loop after user cleared text box', { lastUserMessage: lastTurn.message });
+		}
+	}
 	res.json({ success: true, userTyping: dialogManager.getUserTyping() });
 });
 
