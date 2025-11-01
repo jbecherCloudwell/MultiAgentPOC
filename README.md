@@ -49,27 +49,32 @@ Proof-of-concept Node.js app (TypeScript + Express) for multi-agent dialog:
 - `server/src/ollamaAgent.ts`: Agent logic (replaceable with real AI)
 - `client/src/MultiAgentChat.tsx`: React chat UI component for agent selection, agent creation, and messaging
 
+
 ## Features
-**Dynamic agent creation**: Create agents with custom persona and model via UI or API
-**Agent selection**: Select which agent should respond next after a user message
-**Turn-lock**: Only one agent responds per turn, strict alternation enforced
-**DialogManager**: Tracks dialog turns, last speaker, and selected agent for robust alternation
-**Streaming backend**: SSE endpoint streams agent responses (frontend streaming in progress)
-**Robust dialog sync**: Frontend now replaces temp agent turns with backend responses, preventing flicker and duplicate entries
-**Live participant sync**: Agents can be added or removed from the conversation at any time; backend updates immediately and only selected agents respond
-**Extensible**: Add more agents or swap logic easily
+**Dynamic agent creation**: Create agents with custom persona and model via UI or API. The agent creation form supports default instructions (e.g., markdown formatting) via checkboxes.
+**Persona modal**: Click any agent's persona preview to open a modal with the full persona. Use the modal to copy or fill the new agent form with the selected persona.
+**Markdown rendering**: All agent messages (except user/System) are rendered with markdown formatting in the chat box.
+**Clear Chat**: Instantly reset the conversation and start fresh with the "Clear Chat" button.
+**Export Chat**: Download the full chat session as a .txt file with the "Export Chat" button.
+**Agent selection**: Select which agent should respond next after a user message.
+**Turn-lock**: Only one agent responds per turn, strict alternation enforced.
+**DialogManager**: Tracks dialog turns, last speaker, and selected agent for robust alternation.
+**Streaming backend**: SSE endpoint streams agent responses (frontend streaming in progress).
+**Robust dialog sync**: Frontend now replaces temp agent turns with backend responses, preventing flicker and duplicate entries.
+**Live participant sync**: Agents can be added or removed from the conversation at any time; backend updates immediately and only selected agents respond.
+**Extensible**: Add more agents or swap logic easily.
 
-## Agent Creation & Selection
 
-Use the UI form or `POST /api/agents` to create a new agent with a name and persona
-Select an agent from the dropdown to choose who responds next after your message
-The backend uses your selected agent for the next response, then alternates among agents
-Dialog sync is robust: temp agent turns are replaced by backend responses, so the UI never flickers or shows duplicate/blank entries
+## Agent Creation & Persona Management
 
-Live participant sync: You can add or remove agents from the conversation at any time—even while agents are talking to each other. The backend updates instantly and only selected agents will respond.
+- Use the UI form or `POST /api/agents` to create a new agent with a name and persona.
+- The agent creation form includes checkboxes for default instructions (e.g., markdown formatting, honesty, conciseness).
+- Click any agent's persona preview to open a modal with the full persona. In the modal, click "Use for New Agent" to fill the agent creation form with the selected persona.
+- Select agents to participate in the conversation at any time—even mid-dialog. The backend updates instantly and only selected agents will respond.
 
 ## Changelog
 See `CHANGELOG.md` for a summary of recent changes and version history.
+
 
 ## Usage
 
@@ -90,7 +95,12 @@ See `CHANGELOG.md` for a summary of recent changes and version history.
    ```
 4. Open [http://localhost:3000/](http://localhost:3000/) in your browser
    - You will be redirected to `/chat` and see the interactive chat UI
-5. (API) Send POST requests to `/api/chat` with JSON body:
+5. Use the chat UI to:
+   - Create agents with custom persona and default instructions
+   - Click agent persona previews to view/copy personas
+   - Clear or export the chat session
+   - Select agents to participate in the conversation
+6. (API) Send POST requests to `/api/chat` with JSON body:
    ```json
    { "agentId": "Rambler", "message": "Hello agents!" }
    ```
