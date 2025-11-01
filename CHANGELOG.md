@@ -1,12 +1,20 @@
 ## [0.1.3] - 2025-10-29
-- Feature: Agent selection in UI and backend; selected agent responds first after user message
-- Backend: DialogManager tracks selected agent and uses it for next response
-- API: /api/chat now accepts agentId and sets selected agent for alternation
 - Documentation updated for agent creation and selection
+## [0.2.0] - 2025-11-01
+- UI: Persona preview is now clickable to open a modal for viewing/copying agent persona
+- UI: "Use for New Agent" button in modal fills agent creation form with selected persona
+- UI: Markdown rendering for all agent messages (not just names starting with 'agent')
+- UI: Clear Chat button resets the conversation
+- UI: Export Chat button downloads the full chat session as a .txt file
+- UI: Agent creation form supports default instructions (markdown formatting, etc.) via checkboxes
+- UI: Expanded persona input box and increased max length
+- Backend: No changes required for markdown, agent persona, or export features
+- Version bump: client 0.2.0, server 1.1.0
+
+## [1.1.0] - 2025-11-01
+- Server version bump for new UI features and agent creation improvements
+
 # Changelog
-#
-## [0.1.5] - 2025-10-30
-- Feature: Real-time participant sync—agents can be added/removed mid-conversation and backend updates immediately
 - UI and backend now support dynamic agent control during agent-to-agent dialog
 - Documentation updated for participant selection and live sync
 #

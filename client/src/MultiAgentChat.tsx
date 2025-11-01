@@ -24,8 +24,20 @@ const MultiAgentChat: React.FC = () => {
   const [agents, setAgents] = useState<{ id: string; persona: string; model: string; messageCount: number }[]>([]);
   // Track which agents are active in the conversation
   const [activeAgentIds, setActiveAgentIds] = useState<string[]>([]);
+  // Remove expandedAgents state, not needed for hover tooltips
   const [newAgentName, setNewAgentName] = useState('');
   const [newAgentPersona, setNewAgentPersona] = useState('');
+  // Default instructions for new agents
+  const defaultInstructions = [
+    'Always format your responses using markdown where appropriate.',
+    'Be concise and clear in your answers.',
+    'If you do not know the answer, say so honestly.'
+  ];
+  const [selectedInstructions, setSelectedInstructions] = useState<string[]>([defaultInstructions[0]]);
+
+  // Modal state for viewing/copying agent persona
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalPersona, setModalPersona] = useState('');
   const [creatingAgent, setCreatingAgent] = useState(false);
   const [agentError, setAgentError] = useState('');
   const [message, setMessage] = useState('');
@@ -280,24 +292,116 @@ const MultiAgentChat: React.FC = () => {
 
   return (
     <div style={{ maxWidth: 500, margin: '40px auto', background: '#fff', borderRadius: 8, boxShadow: '0 2px 8px #0001', padding: 24 }}>
-      <h2>MultiAgentPOC Chat</h2>
-      {/* Agent participant selection */}
-      <div style={{ marginBottom: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+        <h2 style={{ margin: 0 }}>MultiAgentPOC Chat</h2>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            type="button"
+            style={{ padding: '6px 16px', borderRadius: 4, border: 'none', background: '#b71c1c', color: '#fff', cursor: 'pointer', fontWeight: 'bold' }}
+            onClick={async () => {
+              await fetch('/api/dialog/reset', { method: 'POST' });
+              setDialog([]);
+            }}
+          >
+            Clear Chat
+          </button>
+          <button
+            type="button"
+            style={{ padding: '6px 16px', borderRadius: 4, border: 'none', background: '#1976d2', color: '#fff', cursor: 'pointer', fontWeight: 'bold' }}
+            onClick={() => {
+              const chatText = dialog.map(turn => `${turn.speaker}: ${turn.message}`).join('\n\n');
+              const blob = new Blob([chatText], { type: 'text/plain' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = 'chat-session.txt';
+              document.body.appendChild(a);
+              a.click();
+              setTimeout(() => {
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+              }, 100);
+            }}
+          >
+            Export Chat
+          </button>
+        </div>
+      </div>
+      {/* Agent participant selection with expandable persona */}
+      <div style={{ marginBottom: 16 }}>
         <label style={{ fontWeight: 'bold', marginRight: 8 }}>Conversation Participants:</label>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-          {agents.map(agent => (
-            <label key={agent.id} style={{ display: 'flex', alignItems: 'center', gap: 4, background: activeAgentIds.includes(agent.id) ? '#e3f2fd' : '#f9f9f9', borderRadius: 4, padding: '2px 8px' }}>
-              <input
-                type="checkbox"
-                checked={activeAgentIds.includes(agent.id)}
-                onChange={e => {
-                  setActiveAgentIds(ids => e.target.checked ? [...ids, agent.id] : ids.filter(id => id !== agent.id));
-                }}
-              />
-              <span style={{ fontWeight: 'bold' }}>{agent.id}</span>
-              <span style={{ color: '#888', fontSize: '0.9em' }}>({agent.persona.slice(0, 18)}{agent.persona.length > 18 ? '...' : ''})</span>
-            </label>
-          ))}
+          {agents.map(agent => {
+            const isActive = activeAgentIds.includes(agent.id);
+            return (
+              <div key={agent.id} style={{
+                background: isActive ? '#e3f2fd' : '#f9f9f9',
+                borderRadius: 6,
+                padding: '6px 12px',
+                boxShadow: isActive ? '0 2px 8px #1976d233' : 'none',
+                border: isActive ? '2px solid #1976d2' : '1px solid #ccc',
+                minWidth: 180,
+                maxWidth: 260,
+                position: 'relative',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 2
+              }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <input
+                    type="checkbox"
+                    checked={isActive}
+                    onChange={e => {
+                      setActiveAgentIds(ids => e.target.checked ? [...ids, agent.id] : ids.filter(id => id !== agent.id));
+                    }}
+                  />
+                  <span style={{ fontWeight: 'bold', fontSize: '1.05em' }}>{agent.id}</span>
+                  {isActive && <span style={{ color: '#1976d2', fontWeight: 'bold' }}>✓</span>}
+                </label>
+                <div
+                  style={{ fontSize: '0.97em', color: '#333', marginTop: 2, whiteSpace: 'pre-wrap', wordBreak: 'break-word', position: 'relative', cursor: 'pointer' }}
+                  tabIndex={0}
+                  title={agent.persona}
+                  onClick={() => { setModalPersona(agent.persona); setModalOpen(true); }}
+                >
+                  {agent.persona.length > 32
+                    ? <span style={{ borderBottom: '1px dotted #1976d2', marginRight: 8 }}>{agent.persona.slice(0, 32)}...</span>
+                    : agent.persona}
+                </div>
+                {agent.model && (
+                  <div style={{ fontSize: '0.85em', color: '#888', marginTop: 2 }}>Model: {agent.model}</div>
+                )}
+              </div>
+            );
+          })}
+      {/* Modal for viewing/copying agent persona */}
+      {modalOpen && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
+          background: 'rgba(0,0,0,0.25)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center'
+        }}>
+          <div style={{ background: '#fff', borderRadius: 8, boxShadow: '0 2px 16px #0003', padding: 24, minWidth: 320, maxWidth: 480 }}>
+            <h3 style={{ marginTop: 0 }}>Agent Persona</h3>
+            <textarea
+              value={modalPersona}
+              readOnly
+              style={{ width: '100%', minHeight: 120, fontSize: '1em', marginBottom: 16, resize: 'vertical', borderRadius: 4, border: '1px solid #ccc', padding: 8 }}
+            />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button
+                type="button"
+                style={{ padding: '8px 16px', borderRadius: 4, border: 'none', background: '#388e3c', color: '#fff', cursor: 'pointer' }}
+                onClick={() => { setNewAgentPersona(modalPersona); setModalOpen(false); }}
+              >Use for New Agent</button>
+              <button
+                type="button"
+                style={{ padding: '8px 16px', borderRadius: 4, border: 'none', background: '#888', color: '#fff', cursor: 'pointer' }}
+                onClick={() => setModalOpen(false)}
+              >Close</button>
+            </div>
+          </div>
+        </div>
+      )}
         </div>
       </div>
       {/* Active agents feedback */}
@@ -320,11 +424,13 @@ const MultiAgentChat: React.FC = () => {
               return;
             }
             setCreatingAgent(true);
+            // Combine persona with selected instructions
+            const personaWithInstructions = [newAgentPersona.trim(), ...selectedInstructions].join('\n\n');
             try {
               const res = await fetch('/api/agents', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: newAgentName.trim(), persona: newAgentPersona.trim() })
+                body: JSON.stringify({ name: newAgentName.trim(), persona: personaWithInstructions })
               });
               const data = await res.json();
               if (!res.ok || !data.success) {
@@ -332,6 +438,9 @@ const MultiAgentChat: React.FC = () => {
               } else {
                 setNewAgentName('');
                 setNewAgentPersona('');
+                setSelectedInstructions([defaultInstructions[0]]);
+                setAgentError('Agent created!');
+                setTimeout(() => setAgentError(''), 2000);
                 // Refresh agent list
                 const agentRes = await fetch('/api/agents');
                 const agentData = await agentRes.json();
@@ -345,31 +454,62 @@ const MultiAgentChat: React.FC = () => {
             }
             setCreatingAgent(false);
           }}
-          style={{ marginBottom: 16, display: 'flex', gap: 8, alignItems: 'center' }}
+          style={{ marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'stretch', background: '#f5f5f5', borderRadius: 6, padding: 12, boxShadow: '0 1px 4px #0001' }}
         >
-          <input
-            type="text"
-            value={newAgentName}
-            onChange={e => setNewAgentName(e.target.value)}
-            placeholder="Agent name"
-            style={{ flex: 1, padding: 8, borderRadius: 4, border: '1px solid #ccc' }}
-            disabled={creatingAgent}
-          />
-          <input
-            type="text"
-            value={newAgentPersona}
-            onChange={e => setNewAgentPersona(e.target.value)}
-            placeholder="Agent persona/description"
-            style={{ flex: 2, padding: 8, borderRadius: 4, border: '1px solid #ccc' }}
-            disabled={creatingAgent}
-          />
-          <button
-            type="submit"
-            disabled={creatingAgent}
-            style={{ padding: '8px 16px', border: 'none', borderRadius: 4, background: '#388e3c', color: '#fff', cursor: 'pointer' }}
-          >
-            {creatingAgent ? 'Creating...' : 'Add Agent'}
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              type="text"
+              value={newAgentName}
+              onChange={e => setNewAgentName(e.target.value)}
+              placeholder="Agent name"
+              style={{ flex: 1, padding: 8, borderRadius: 4, border: '1px solid #ccc' }}
+              disabled={creatingAgent}
+              maxLength={32}
+              required
+            />
+            <textarea
+              value={newAgentPersona}
+              onChange={e => setNewAgentPersona(e.target.value)}
+              placeholder="Agent persona/description"
+              style={{ flex: 2, padding: 8, borderRadius: 4, border: '1px solid #ccc', minHeight: 64, resize: 'vertical' }}
+              disabled={creatingAgent}
+              maxLength={1024}
+              required
+            />
+            <button
+              type="submit"
+              disabled={creatingAgent}
+              style={{ padding: '8px 16px', border: 'none', borderRadius: 4, background: '#388e3c', color: '#fff', cursor: 'pointer' }}
+            >
+              {creatingAgent ? 'Creating...' : 'Add Agent'}
+            </button>
+          </div>
+          {/* Default instructions checkboxes */}
+          <div style={{ marginTop: 8, marginBottom: 4 }}>
+            <div style={{ fontWeight: 'bold', marginBottom: 4 }}>Default Instructions:</div>
+            {defaultInstructions.map(instr => (
+              <label key={instr} style={{ display: 'block', marginBottom: 2, fontSize: '0.97em' }}>
+                <input
+                  type="checkbox"
+                  checked={selectedInstructions.includes(instr)}
+                  onChange={e => {
+                    setSelectedInstructions(selectedInstructions =>
+                      e.target.checked
+                        ? [...selectedInstructions, instr]
+                        : selectedInstructions.filter(i => i !== instr)
+                    );
+                  }}
+                  style={{ marginRight: 6 }}
+                />
+                {instr}
+              </label>
+            ))}
+          </div>
+          {agentError && (
+            <div style={{ color: agentError === 'Agent created!' ? '#388e3c' : '#b71c1c', marginTop: 4, fontWeight: 'bold' }}>
+              {agentError}
+            </div>
+          )}
         </form>
 
       {/* Agent creation form */}
@@ -390,7 +530,7 @@ const MultiAgentChat: React.FC = () => {
             {dialog.map((turn, i) => (
               <div key={turn.id} style={{ marginBottom: 8, opacity: turn.status === 'pending' ? 0.6 : 1 }}>
                 <b>{turn.speaker}:</b>{' '}
-                {turn.speaker.startsWith('agent') ? (
+                {(turn.speaker !== 'user' && turn.speaker !== 'System') ? (
                   <>
                     <ReactMarkdown
                       children={turn.message}
